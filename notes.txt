@@ -1,0 +1,916 @@
+>mongo
+>net stop MongoDB
+>mongod
+>show dbs
+>use shop
+>db.products.insertOne({name: "Stuff", price: "30"})
+>db.products.find()
+>db.products.find().pretty()
+>db.products.insertOne({name: "Guitar", price: "30.99", description: "you use it to play music with"})
+
+Database->Collection->Document(s).
+Documents are created Implicitly.
+Databases and collections are created "lazily" (when a document is inserted).
+A document can't directly be inserted into a database, you need to use a Collection.
+
+> db.flightData.find().pretty()
+{
+        "_id" : ObjectId("5d079e902573abc1543b5e11"),
+        "departureAirport" : "MUC",
+        "arrivalAirport" : "SFO",
+        "aircraft" : "Airbus A380",
+        "distance" : 12000,
+        "intercontinental" : true
+}
+
+#it is possible to specify an object's ID manually:
+>db.flightData.insertOne({departureAirport: "TXL", arrivalAirport: "LHR", _id: "txl-lhr-1"})
+
+#CRUD Operations
+Create:
+  insertOne(data, options)
+  insertMany(data, options)
+Read:
+  find(filter,options)
+  findOne(filter, options)
+Update:
+  updateOne(filter, data, options)
+  updateMany(filter, data, options)
+  replaceOne(filter, data, options)
+Delete:
+  deleteOne(filter,options)
+  deleteMany(filter, options)
+
+>db.flightData.deleteOne({departureAirport: "TXL"})
+> db.flightData.updateOne({distance: 12000}, {$set: {marker: 'delete'}})
+{ "acknowledged" : true, "matchedCount" : 1, "modifiedCount" : 1 }
+
+> db.flightData.updateMany({}, {$set: {marker: "toDelete"}})
+{ "acknowledged" : true, "matchedCount" : 2, "modifiedCount" : 2 }
+
+> db.flightData.deleteMany({marker: "toDelete"})
+> db.flightData.find({intercontinental: true}).pretty()
+> db.flightData.find({distance: {$gt: 10000}}).pretty()
+> db.flightData.findOne({distance: {$gt: 10000}}) #pretty is not supported on findOne
+
+#Cursors
+>db.passengers.find().toArray()
+>db.passengers.find().forEach((passengerData)=> {printjson(passengerData)})
+
+#Projections
+db.passengers.find({}, {name: 1}).pretty()  #_id is always included
+db.passengers.find({}, {name: 1, _id: 0}).pretty() #exclude by using attribute: 0
+
+#Embedded Documents (JSON document within a JSON document)
+Up to 100 levels of Nesting.
+Max 16MB document.
+> db.flightData.updateMany({},{$set: {status: {description: "on time", lastUpdated: "15 mins ago"}}})
+
+#Arrays
+> db.passengers.updateOne({name: "Albert Twostone"}, {$set: {hobbies: ["sports", "cooking"]}})
+#Structured data
+> db.passengers.findOne({name: "Albert Twostone"}).hobbies
+> db.passengers.find({hobbies: "sports"}).pretty()
+> db.flightData.find({"status.description": "on-time"}).pretty()
+
+#Resetting a database
+To get rid of all data:
+> use databaseName
+> db.dropDatabase()
+To get rid of a collection:
+> db.myCollection.drop()
+
+##Section 3: Schemas and Relations
+MongoDB does not force you to use a Schema, but you can have one if you want to.
+> show dbs
+> use shop 
+> db.products.insertOne({name: "A book", price: 12.99})
+> db.products.insertOne({title: "Guitar", seller: {name: "Fender", Country: "US"}})
+> db..products.deleteMany({})
+> db.products.insertOne({title: "Guitar", seller: {name: "Fender", Country: "US"}, details: null})
+
+#Data Types
+-Text.
+-Boolean.
+-Number (Integer int32, NumberLong int64, NumberDecimal).
+-ObjectId.
+-ISODate.
+-Timestamp.
+-Embedded Document.
+-Array.
+
+> db.stats()
+> db.numbers.insertOne({a: NumberInt(1)})
+> typeof db.numbers.findOne().a
+  number
+
+#Data Types Limits:
+https://docs.mongodb.com/manual/reference/limits/
+Important data type limits are:
+  -Normal integers (int32) can hold a maximum value of +-2,147,483,647
+  -Long integers (int64) can hold a maximum value of +-9,223,372,036,854,775,807
+  -Text can be as long as you want - the limit is the 16mb restriction for the overall document
+
+NumberInt creates a int32 value => NumberInt(55)
+NumberLong creates a int64 value => NumberLong(7489729384792)
+If you just use a number (e.g. insertOne({a: 1}), this will get added as a normal double into the database.
+The reason for this is that the shell is based on JS which only knows float/ double values and doesn't differ between integers and floats.
+NumberDecimal creates a high-precision double value => NumberDecimal("12.99") => This can be helpful for cases where you need (many) exact decimal places for calculations.
+
+#Relations
+#one to one
+> use hospital
+> db.patients.insertOne({name: "Dave", age: 29, diseaseSummary: "summary-dave-1"})
+> db.diseaseSummaries.insertOne({_id: "summary-dave-1"}, diseases: ["spondilitys"]})
+> var dsid = db.patients.findOne().diseaseSummary
+> dsid
+  summary-dave-1
+> db.diseaseSummaries.findOne({_id: dsid})
+> db.patients.deleteMany({})
+> db.patients.insertOne({name: "Dave", age: 29, diseaseSummary: {diseases: ["spondilitys"]}})
+
+#one to one - Using References
+> use carData
+> db.persons.insertOne({name: "Dave", car: {model: "Prius", price: 30000}})
+> db.cars.insertOne({model: "Prius", price: 4000, onwer: objectId("XXXXXXXXXXX")})
+
+#one to many - Embedded
+> use support
+> db.questions.insertOne({creator: "David", question: {"Why is Gamora?", answers: ["q1a1", "q1a2"]})
+> db.answers.insertMany([{_id: "q1a1", text: "It works"}, {_id: "q1a2", text: "lol"}])
+> db.questions.deleteMany()
+> db.questions.insertOne({creator: "David", question: "Why is Gamora?", answers: [{text: "It works"}, {text: "lol"}]})
+
+#one to many - References
+> use cityData
+> db.cities.insertOne({name: "New York", coordinates: {lat: 21, lng: 55}})
+db.cities.insertMany
+
+#Many to many - Embedded
+- "SQL" like approach:
+> db.products.insertOne({title: "Book", price: 12.99})
+> db.customers.insertOne({name: "David", age: 30})
+> db.orders.insertOne({productId: objectId(idofProduct), customerId: ObjectId(customerId)})
+
+-"Better approach":
+> db.customers.updateOne({}, {$set: {orders: [{productId: ObjectId("$OurProductID"), quantity: 1}]}})
+
+#Many to Many - References
+> use bookRegistry
+> db.books.updateOne({}, {$set: {authors: [ObjectId:("myidhere12345")]}})
+
+#using lookup - can be used to merge data
+> db.books.aggregate([{$lookup: {from: "authors", localField: "authors", foreignField: "_id", as: "creators"}}]).pretty()
+
+#49. Example exercise
+> use blog
+> db.users.insertMany([{name: "David", age: 30, email: "david@test.com"}, {name: "Adrian", age: 30, email: adrian@test.com}])
+> db.posts.insertOne({title: "My first post", text: "this is my text", tags: ["new", "tech"], creator: ObjectId("myobjectid1234"), comments: [{text: "this is a very good post.", author: ObjectId("anotherobjectid123")}]}
+
+#Schema validation
+-validationLevel: which documents get validated?
+  strict: All inserts and updates.
+  moderate: All inserts and updates to correct documents.
+-validationAction: what happens if a validation fails?
+  error: Throw error and deny insert/updateMany
+  warn: log warning but proceed
+
+#51 add validation
+see "validation.js" file
+> db.posts.drop()
+#52 changing validation Action
+use validation-2.js here
+> db.runCommand({collMod: "posts"}, {...enter the validationsettingshere...})
+
+#Useful resources:
+The MongoDB Limits: https://docs.mongodb.com/manual/reference/limits/
+The MongoDB Data Types: https://docs.mongodb.com/manual/reference/bson-types/
+More on Schema Validation: https://docs.mongodb.com/manual/core/schema-validation/
+
+##Section 4
+This is about configuring MongoDB on your machine. Think it's just better to look at the offial doc.
+> mongod --dbpath "pahttoyourdbpathhere"
+> mongod --logpath "pathtoyourlog/log"
+--fork only runs on linux and mac. fork starts mongodb as a child service
+> net start mongodb  
+> net stop mongodb
+
+##Section 6 - Create Operations
+insert() is similar to insertOne(). However it doesn't return the id that was generated. insertOne() is prefered.
+
+#Ordered inserts
+mongodb works by default with ordered inserts, meaning if you intent to perform an ordered insert of the documents in the array, 
+and if an error occurs with one of documents, MongoDB will return without processing the remaining documents in the array.
+> use hobbies
+> db.hobbies.insertMany([{...},{...}] , {ordered: false}) #default is "true"
+
+#writeConcern
+Write concern describes the level of acknowledgment requested from MongoDB for write operations to a standalone mongod or
+to replica sets or to sharded clusters. In sharded clusters, mongos instances will pass the write concern on to the shards.
+
+> db.persons.insertOne({name: "David", age: 30}, {writeConcern: {w: 1, j: true, wtimeout: 1}})
+
+#Atomicity
+Either everything passes a transaction or nothing does and then the change is rolled back.
+
+#Importing data
+> mongoimport tv-shows.json -d movieData -c movies --jsonArray --drop
+
+##Section 7
+#Filters and operators
+Operators:
+  -Query and Projections
+  -Update
+  -Query modifiers (deprecated)
+  -Aggregation
+
+Query Selectors:
+  -Comparison
+  -Logical
+  -Element
+  -Evaluation
+  -Array
+  -Comments
+  -Geospacial
+
+Projection Operators:
+  - $
+  - $elemMatch
+  - $meta
+  - $slice
+
+> db.movies.find({runtime: {$ne: 60}}).pretty()
+> db.movies.find({runtime: {$lt: 60}}).pretty()
+> db.movies.find({runtime: {$lte: 60}}).pretty()
+
+#querying fields and arrays
+> db.movies.find({"ratings.average": {$gt: 7}}).pretty()
+#Array:
+> db.movies.find({genres: "Drama"}).pretty()
+#Arrays - looking for equality
+> db.movies.find({genres: ["Drama"]}).pretty()
+
+# $in and $nin
+> db.movies.find({runtime: {$in: [30, 42]}}).pretty()
+
+# $or
+> db.movies.find($or: [$or: {"ratings.average": {$lt: 5}, {"ratings.average: {$gt: 9.3}}]}).pretty()
+> db.movies.find($or: [$nor: {"ratings.average": {$lt: 5}, {"ratings.average: {$gt: 9.3}}]}).pretty()
+
+# $and
+> db.movies.find({$and: [{"rating.average": {$gt: 9}}, {genres: "Drama"}]}).count()
+
+# $not
+> db.movies.find({runtime: {$not: {$eq: 60}}}).count()
+
+#Element operators
+> db.users.find({age: {$exists: true}}).pretty()
+> db.users.find({age: {$exists: age, $ne: null}}).pretty()
+> db.users.find({phone: {$type: ["double", "string"]}}).pretty()
+
+# Evaluation operator - $regex
+> db.movies.find({summary: {$regex: /musical/}}).pretty()
+# Evaluation operator - $expr
+> db.sales.find({$expr: {$gt: ["volume", "target"]}}).pretty()
+> db.sales.find({$expr: {$gt: ["$volume", "$target"]}}).pretty()
+> db.sales.find({$expr: {$gt: [{$cond: {if: ["$volume", 190]}, then: {$substract: [$volume, 10]}, else: "$volume"}}, "$target"]}}).pretty()
+
+> db.users.find({"hobbies.title": "Sports"}).pretty()
+
+# $size
+> db.users.find({hobbies: {$size: 3}}).pretty()
+
+# $all
+> db.moviestarts.find({genre: {$all: ["action", "thriller"]}}).pretty()
+
+# $elemMatch
+> db.users.find({hobbies: {$elemMatch: {title: "Sports", frequency: {$gte: 3}}}}).pretty()
+
+# cursors
+> const dataCursor = db.movies.find()
+> dataCursor.next()
+> dataCursor.forEach(doc => {printjson(doc)})
+> db.movies.find().sort({"rating.average": -1}).pretty() #descending order
+> db.movies.find().sort({"rating.average": -}).pretty() #ascending order
+> db.movies.find().sort({"rating.average": -}).skip(10).pretty()
+> db.movies.find().sort({"rating.average": -}).limit(10).pretty()
+
+#Projections
+> db.movies.find({genres: "Drama"}, {"genres.$": 1}).pretty()
+> db.movies.find({genres: "Drama"}, {genres: {$elemMatch: {$eq: "Horror"}}}).pretty()
+
+# $slice
+> db.movies.find({"rating.average": {$gt: 9}}, {genres: $slice: [1,2], name: 1}).pretty()
+
+##Section 8: Update Operations
+
+> db.users.updateOne({_id: ObjectId("myovjectidhere")}, {$set: {hobbies: [{title: "Sports", frequency: 6}, {title: "Cooking", frequency: 3}]}})
+> db.users.updateMany({"hobbies.title": "Sports"}, {$set: {isSporty: true}})
+
+# $set with multiple values
+> db.users.updateOne({_id: ObjectId("MYOBJECTIDHERE")}, {$set: {age: 99, phone: 9999999}})
+
+#incrementing and decrementing values
+> db.users.updateOne({name: "Manuel"}, {$inc: {age: 2}})
+> db.users.updateOne({name: "Manuel"}, {$inc: {age: -2}})
+> db.users.updateOne({name: "Chris"}, {$min: {age: 35}})
+> db.users.updateOne({name: "Chris"}, {$mul: {age: 1.5}}) #multiply
+
+# getting rid of fields
+> db.users.uodateMany({$isSporty: true}, {$unset: {phone: ""}})
+
+#renaming fields
+> db.users.updateMany({}, {$rename: {age: "totalAge"}})
+
+# upsert()
+#If set to true, creates a new document when no document matches the query criteria. 
+#The default value is false, which does not insert a new document when no match is found.
+> db.users.updateOne({name: "Maria"}, {$set: true}, {upsert: true})
+
+#updating matching arrays
+> db.users.find({hobbies: {$elemMatch: {title: "Sports", frequency: {$gte: 3}}}}).pretty()
+> db.users.updateMany({hobbies: {$elemMatch: {title: "Sports", frequency: {$gte: 3}}}}, {$set: {"hobbies.$.highFrequency": true}})
+
+#updating all array elements
+> db.users.updateMany({totalAge: {$gt: 30}}, {$inc: {"hobbies.$[].frequency": -1}})
+
+#finding and updating specific fields
+> db.users.updateMany({"hobbies.frequency": {$gt: 2}}, {$set: {"hobbies.$[el].goodFrequency": true}}, {arrayFilters: [{"el.frequency": {$gt.2}}]})
+
+# Adding elements to Arrays
+> db.users.updateOne({name: "Maria"}, {$push: {hobbies: {title: "Videogames", frequency: 99}}})
+> db.users.updateOne({name: "Maria"}, {$push: {hobbies: {$each: [{title: "Wine", frequency: 10}, {title: "Hiking", frequency: 2}], $sort: {frequency: -1}, $slice: 1}}})
+
+#Removing elements from Arrays
+> db.users.updateOne({name: "Maria"}, {$pull: {hobbies: {title: "Hiking"}}})
+> db.users.updateOne({name: "Chris"}, {$pop: {hobbies: 1}})
+
+# $addToSet
+The $addToSet operator adds a value to an array unless the value is already present,
+in which case $addToSet does nothing to that array.
+
+##Section 9 Delete Operations
+
+> db.users.deleteOne({name: "Chris"})
+> db.users.deleteMany({totalAge: {$exists: false}, isSporty: false})
+#Deleting all entries
+> dn.users.deleteMany({})
+> db.users.drop()
+> db.dropDatabase()
+
+
+##Section 10: Working with indexes
+#import the persons.json file
+> mongoimport persons.json -d contactData -c contacts --jsonArray
+#Adding a single field indexes
+> db.contacts.explain().find({"dob.age"}: {$gt: 60})
+> db.contacts.explain("executionStats").find({"dob.age"}: {$gt: 60})
+> db.contacts.createIndex({"dob.age": 1})
+The important thing is that the index items are ordered (ascending or descending - depending on how you created the index).
+createIndex({age: 1}) creates an index with ascending sorting, createIndex({age: -1}) creates one with descending sorting.
+
+# index restrictions
+> db.contacts.dropIndex({"dob.age": 1})
+
+#compound index
+> db.contacts.createIndex({"dob.age": 1, gender: 1})
+
+#indexes for sorting
+#threshold is 32MB of memory for sorting
+
+# understanding default index
+> db.contacts.getIndexes()
+#configuring indexes
+> db.contacts.createIndex({email: 1}, {unique: true})
+
+#Partial Filters
+> db.contacts.createIndex({"dob.age": 1}, {partialExpression: {gender: "male"}})
+  stage: IXSCAN
+> db.users.createIndex({email: 1}, {unique: true, partialExpression: {email: {$exists: true}}})
+
+# delete index
+> db.users.dropIndex({email: 1})
+
+#TTL index
+> db.sessions.createIndex({createdAt: 1}, {expireAfterSeconds: 10})
+
+#Covered queries
+As per the official MongoDB documentation, a covered query is a query in which:
+All the fields in the query are part of an index.
+All the fields returned in the query are in the same index.
+
+#text index
+> db.products.createIndex({description: "text"})
+> db.products.find({$text: {$search: "awesome"}})
+#exclude word
+> db.products.find({$text: {$search: "-awesome"}})
+
+#you can also setup the text's default language and weights
+#Indexes: Background and Foreground
+
+##Section 11 Geospatial data
+#GeoJSON Objects
+> use awesomeplaces
+> db.places.insertOne({name: "locationHere", location: {type: "Point", coordinates: [-112.34343, 37.645454]}})
+> db.places.find({location: {$near: {$geometry: {type: "Point", coordinates: [-112.34343, 37.645454]}}}}) # this fails, we need  a geospace index
+#adding a geospace index
+> db.places.createIndex({location: "2dsphere"})
+> db.places.find({location: {$near: {$geometry: {type: "Point", coordinates: [-112.34343, 37.645454]}, $maxDistance: 500, $mindDistance: 10}}})
+> db.places.find({location: {$geoWithin: $geometry: {type: "Polygon", coordinates: [[p1, p2, p3, p4, p1]]}}})
+#finding users within specific area
+> db.areas.createIndex({area: "2dsphere"})
+> db.areas.find({area: {$geoIntersects: ${geometry: {type: "Point", coordinates: [1231312,123123123]}}}})
+#find places within certain radius
+> db.places.find({location: {$geoWithin: {$centerSphere: [[131231,12312312], 1 / 6378.1]}}})
+
+##Section 12: Aggregation Framework
+> mongoimport persons.json -d analytics -c persons --jsonArray
+> db.persons.aggregate([{ $match: {gender: "female"}}]).pretty()
+#Group stage (commands-1.js)
+db.persons.aggregate([
+    { $match: { gender: 'female' } },
+    { $group: { _id: { state: "$location.state" }, totalPersons: { $sum: 1 } } }
+]).pretty();
+#Digging deeper into group stage: (commands-2.js)
+db.persons.aggregate([
+    { $match: { gender: 'female' } },
+    { $group: { _id: { state: "$location.state" }, totalPersons: { $sum: 1 } } },
+    { $sort: { totalPersons: -1 } }
+]).pretty();
+# $project (commands-3.js)
+db.persons.aggregate([
+    {
+      $project: {
+        _id: 0,
+        gender: 1,
+        fullName: {
+          $concat: [
+            { $toUpper: { $substrCP: ['$name.first', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.first',
+                1,
+                { $subtract: [{ $strLenCP: '$name.first' }, 1] }
+              ]
+            },
+            ' ',
+            { $toUpper: { $substrCP: ['$name.last', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.last',
+                1,
+                { $subtract: [{ $strLenCP: '$name.last' }, 1] }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]).pretty();
+
+#turning location into a geojson Object (commands-4-locationIntoGeoJSON.js)
+db.persons.aggregate([
+  { 
+    $project: {
+      _id: 0,
+      name: 1,
+      email: 1,
+      location:  { 
+        type: "Point",
+        coordinates: [
+          {$convert: {input: '$location.coordinates.longitude', to: "double", onError: 0.0, onNull: 0.0},
+          {$convert: {input: '$location.coordinates.latitude', to: "double", onError: 0.0, onNull: 0.0}
+        ]
+      }
+    },
+    {
+      $project: {
+        gender: 1,
+        email: 1,
+        fullName: {
+          $concat: [
+            { $toUpper: { $substrCP: ['$name.first', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.first',
+                1,
+                { $subtract: [{ $strLenCP: '$name.first' }, 1] }
+              ]
+            },
+            ' ',
+            { $toUpper: { $substrCP: ['$name.last', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.last',
+                1,
+                { $subtract: [{ $strLenCP: '$name.last' }, 1] }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]).pretty();
+
+#Transforming the birthdate (commands-5-tranformingTheBirthdate.js)
+db.persons.aggregate([
+    {
+      $project: {
+        _id: 0,
+        name: 1,
+        email: 1,
+        birthdate: { $convert: { input: '$dob.date', to: 'date' } },
+        age: "$dob.age",
+        location: {
+          type: 'Point',
+          coordinates: [
+            {
+              $convert: {
+                input: '$location.coordinates.longitude',
+                to: 'double',
+                onError: 0.0,
+                onNull: 0.0
+              }
+            },
+            {
+              $convert: {
+                input: '$location.coordinates.latitude',
+                to: 'double',
+                onError: 0.0,
+                onNull: 0.0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      $project: {
+        gender: 1,
+        email: 1,
+        location: 1,
+        birthdate: 1,
+        age: 1,
+        fullName: {
+          $concat: [
+            { $toUpper: { $substrCP: ['$name.first', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.first',
+                1,
+                { $subtract: [{ $strLenCP: '$name.first' }, 1] }
+              ]
+            },
+            ' ',
+            { $toUpper: { $substrCP: ['$name.last', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.last',
+                1,
+                { $subtract: [{ $strLenCP: '$name.last' }, 1] }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]).pretty();
+
+#Shortcuts (commands-6-Shortcuts.js)
+db.persons.aggregate([
+    {
+      $project: {
+        _id: 0,
+        name: 1,
+        email: 1,
+        birthdate: { $toDate: '$dob.date' },
+        age: "$dob.age",
+        location: {
+          type: 'Point',
+          coordinates: [
+            {
+              $convert: {
+                input: '$location.coordinates.longitude',
+                to: 'double',
+                onError: 0.0,
+                onNull: 0.0
+              }
+            },
+            {
+              $convert: {
+                input: '$location.coordinates.latitude',
+                to: 'double',
+                onError: 0.0,
+                onNull: 0.0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      $project: {
+        gender: 1,
+        email: 1,
+        location: 1,
+        birthdate: 1,
+        age: 1,
+        fullName: {
+          $concat: [
+            { $toUpper: { $substrCP: ['$name.first', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.first',
+                1,
+                { $subtract: [{ $strLenCP: '$name.first' }, 1] }
+              ]
+            },
+            ' ',
+            { $toUpper: { $substrCP: ['$name.last', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.last',
+                1,
+                { $subtract: [{ $strLenCP: '$name.last' }, 1] }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]).pretty();
+
+
+#isoweekYearOperator (commands-7-isoWeek-operator.js)
+db.persons.aggregate([
+    {
+      $project: {
+        _id: 0,
+        name: 1,
+        email: 1,
+        birthdate: { $toDate: '$dob.date' },
+        age: "$dob.age",
+        location: {
+          type: 'Point',
+          coordinates: [
+            {
+              $convert: {
+                input: '$location.coordinates.longitude',
+                to: 'double',
+                onError: 0.0,
+                onNull: 0.0
+              }
+            },
+            {
+              $convert: {
+                input: '$location.coordinates.latitude',
+                to: 'double',
+                onError: 0.0,
+                onNull: 0.0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      $project: {
+        gender: 1,
+        email: 1,
+        location: 1,
+        birthdate: 1,
+        age: 1,
+        fullName: {
+          $concat: [
+            { $toUpper: { $substrCP: ['$name.first', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.first',
+                1,
+                { $subtract: [{ $strLenCP: '$name.first' }, 1] }
+              ]
+            },
+            ' ',
+            { $toUpper: { $substrCP: ['$name.last', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.last',
+                1,
+                { $subtract: [{ $strLenCP: '$name.last' }, 1] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    { $group: { _id: { birthYear: { $isoWeekYear: "$birthdate" } }, numPersons: { $sum: 1 } } },
+    { $sort: { numPersons: -1 } }
+  ]).pretty();
+
+
+#group vs project
+$group : n:1 -> sum,count, average, build array
+$project: 1:1 -> include/exclude fields, transform fields
+
+#Pushing elements into newly created arrays. (array-data.json)
+db.persons.aggregate([
+  {#group: {_id: {age: "$age"}, allHobbies: {$push: "$hobbies"}}}
+]).pretty();
+
+# $undwind stage (commands-8-undwind.js)
+db.friends.aggregate([
+  { $unwind: "$hobbies" }, 
+  { $group: { _id: { age: "$age" }, allHobbies: { $push: "$hobbies" } } }
+]).pretty();
+
+#eliminate duplicates
+db.friends.aggregate([
+  { $unwind: "$hobbies" }, 
+  { $group: { _id: { age: "$age" }, allHobbies: { $addToSet: "$hobbies" } } }
+]).pretty();
+
+#Projection with Arrays (commands-10-ProjectionwithArrays.js)
+db.friends.aggregate([
+  { $project: { _id: 0, examScore: { $slice: ["$examScores", 2, 1] } } }
+]).pretty();
+
+
+#Getting length of array (commands-11-lengthArrayjs.js)
+db.friends.aggregate([
+  { $project: { _id: 0, numScores: { $size: "$examScores" } } }
+]).pretty();
+
+#$filter operator (commands-12-filter-operator.js)
+db.friends.aggregate([
+  {
+    $project: {
+      _id: 0,
+      scores: { $filter: { input: '$examScores', as: 'sc', cond: { $gt: ["$$sc.score", 60] } } }
+    }
+  }
+]).pretty();
+
+#Multiple operations to our Array (commands-13.js)
+db.friends.aggregate([
+    { $unwind: "$examScores" },
+    { $project: { _id: 1, name: 1, age: 1, score: "$examScores.score" } },
+    { $sort: { score: -1 } },
+    { $group: { _id: "$_id", name: { $first: "$name" }, maxScore: { $max: "$score" } } },
+    { $sort: { maxScore: -1 } }
+]).pretty();
+
+#bucket (commands-14-bucket-stage.js)
+allows to output data in buckets
+db.persons
+  .aggregate([
+    {
+      $bucket: {
+        groupBy: '$dob.age',
+        boundaries: [18, 30, 40, 50, 60, 120],
+        output: {
+          numPersons: { $sum: 1 },
+          averageAge: { $avg: '$dob.age' }
+        }
+      }
+    }
+  ])
+  .pretty();
+
+db.persons.aggregate([
+    {
+      $bucketAuto: {
+        groupBy: '$dob.age',
+        buckets: 5,
+        output: {
+          numPersons: { $sum: 1 },
+          averageAge: { $avg: '$dob.age' }
+        }
+      }
+    }
+  ]).pretty();
+
+#Additional stages (commands-15-additionalStages.js)
+db.persons.aggregate([
+    { $match: { gender: "male" } },
+    { $project: { _id: 0, gender: 1, name: { $concat: ["$name.first", " ", "$name.last"] }, birthdate: { $toDate: "$dob.date" } } },
+    { $sort: { birthdate: 1 } },
+    { $skip: 10 },
+    { $limit: 10 }
+]).pretty();
+
+#Results into a new collection (commands-16-resultsIntoCollection.js) $out stage
+db.persons.aggregate([
+    {
+      $project: {
+        _id: 0,
+        name: 1,
+        email: 1,
+        birthdate: { $toDate: '$dob.date' },
+        age: "$dob.age",
+        location: {
+          type: 'Point',
+          coordinates: [
+            {
+              $convert: {
+                input: '$location.coordinates.longitude',
+                to: 'double',
+                onError: 0.0,
+                onNull: 0.0
+              }
+            },
+            {
+              $convert: {
+                input: '$location.coordinates.latitude',
+                to: 'double',
+                onError: 0.0,
+                onNull: 0.0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      $project: {
+        gender: 1,
+        email: 1,
+        location: 1,
+        birthdate: 1,
+        age: 1,
+        fullName: {
+          $concat: [
+            { $toUpper: { $substrCP: ['$name.first', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.first',
+                1,
+                { $subtract: [{ $strLenCP: '$name.first' }, 1] }
+              ]
+            },
+            ' ',
+            { $toUpper: { $substrCP: ['$name.last', 0, 1] } },
+            {
+              $substrCP: [
+                '$name.last',
+                1,
+                { $subtract: [{ $strLenCP: '$name.last' }, 1] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    { $out: "transformedPersons" }
+]).pretty();
+
+# $geoNear stage (commands-17-geoNearStage.js)
+db.transformedPersons.aggregate([
+    {
+      $geoNear: {
+        near: {
+          type: 'Point',
+          coordinates: [-18.4, -42.8]
+        },
+        maxDistance: 1000000,
+        num: 10,
+        query: { age: { $gt: 30 } },
+        distanceField: "distance"
+      }
+    }
+]).pretty();
+
+
+##Section 13: Working with Numeric Data
+int32, int64, Doubles(64bit) values are approximated, High precision Doubles (128bit) (34 decimal digits).
+
+##Section 14: MongoDB and Security
+#Creating a user
+> use admin
+> db.createUser({user: "David", pwd: "mypasswordhere", role: ["userAdminAnyDatabase"]});
+
+Roles:
+  Database User: read,readWrite
+  Database Admin: dbAdmin, userAdmin, dbOwner
+  All Database Role: readAnyDatabase, readWriteAnyDatabase, userAdminAnyDatabase, dbAdminAnyDatabase
+  Cluster Admin: clusterManager, clusterMonitor, hostManager, clusterAdmin
+  Backup/restore: backup, restore
+  Superuser: dbOwner, userAdmin, userAdminDatabase, root
+
+> mongo -u David -p mypasswordhere --authenticationDatabase admin
+> db.logout()
+
+#Updating user:
+> db.updateUser("David", {roles: ["readWrite"], {role: "readWrite", dn: "blog"}})
+
+#SSL Encryption
+> mongod --sslMode requireSSL --sslPEKeyFile mongodb.pem
+
+##Section 15: Performance Fault Tolerancy and Deployment
+Replica sets:
+Sharding (Horizontal Scaling):
+
+
+##Section 16: Transactions
+#TODO
+##Section 17: Shell to Driver
+#It's just a nodejs project
